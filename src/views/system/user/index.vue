@@ -43,6 +43,7 @@
           <template v-if="column.key === 'action'">
             <a-space>
               <a v-permission="'system:user:edit'" @click="openForm(record)">编辑</a>
+              <a v-permission="'system:user:edit'" @click="openRoleForm(record)">分配角色</a>
               <a v-permission="'system:user:edit'" @click="handleToggleStatus(record)">
                 {{ record.status === 1 ? '禁用' : '启用' }}
               </a>
@@ -84,13 +85,35 @@
         </a-form-item>
       </a-form>
     </a-modal>
+
+    <!-- 分配角色弹窗 -->
+    <a-modal
+      v-model:open="roleFormVisible"
+      title="分配角色"
+      @ok="handleAssignRoles"
+      :confirm-loading="roleSubmitting"
+    >
+      <p style="margin-bottom: 12px">当前用户：<strong>{{ roleUserName }}</strong></p>
+      <a-select
+        v-model:value="selectedRoleIds"
+        mode="multiple"
+        placeholder="请选择角色"
+        style="width: 100%"
+        :loading="roleLoading"
+      >
+        <a-select-option v-for="role in allRoles" :key="role.id" :value="role.id">
+          {{ role.name }}（{{ role.code }}）
+        </a-select-option>
+      </a-select>
+    </a-modal>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import { getUsers, createUser, updateUser, deleteUser, toggleUserStatus } from '@/api/user'
+import { getUsers, createUser, updateUser, deleteUser, toggleUserStatus, assignRoles } from '@/api/user'
+import { getRoles } from '@/api/role'
 
 const columns = [
   { title: 'ID', dataIndex: 'id', key: 'id', width: 60 },
@@ -100,7 +123,7 @@ const columns = [
   { title: '角色', key: 'roles' },
   { title: '状态', key: 'status', width: 80 },
   { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt' },
-  { title: '操作', key: 'action', width: 180, fixed: 'right' as const },
+  { title: '操作', key: 'action', width: 240, fixed: 'right' as const },
 ]
 
 const tableData = ref<any[]>([])
@@ -118,6 +141,15 @@ const formData = reactive({
   email: '',
   phone: '',
 })
+
+// 角色分配相关
+const roleFormVisible = ref(false)
+const roleSubmitting = ref(false)
+const roleUserId = ref<number>(0)
+const roleUserName = ref('')
+const roleLoading = ref(false)
+const allRoles = ref<any[]>([])
+const selectedRoleIds = ref<number[]>([])
 
 onMounted(() => loadData())
 
@@ -183,5 +215,35 @@ async function handleToggleStatus(record: any) {
   await toggleUserStatus(record.id)
   message.success('操作成功')
   loadData()
+}
+
+// 打开角色分配弹窗
+async function openRoleForm(record: any) {
+  roleUserId.value = record.id
+  roleUserName.value = record.username
+  selectedRoleIds.value = (record.roles || []).map((r: any) => r.id)
+  roleFormVisible.value = true
+
+  // 加载所有角色
+  roleLoading.value = true
+  try {
+    const res: any = await getRoles({ pageSize: 999 })
+    allRoles.value = res.data?.list || []
+  } finally {
+    roleLoading.value = false
+  }
+}
+
+// 提交角色分配
+async function handleAssignRoles() {
+  roleSubmitting.value = true
+  try {
+    await assignRoles(roleUserId.value, selectedRoleIds.value)
+    message.success('角色分配成功')
+    roleFormVisible.value = false
+    loadData()
+  } finally {
+    roleSubmitting.value = false
+  }
 }
 </script>
