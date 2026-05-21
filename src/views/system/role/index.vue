@@ -26,6 +26,7 @@
             <a-space>
               <a v-permission="'system:role:edit'" @click="openForm(record)">编辑</a>
               <a v-permission="'system:role:edit'" @click="openPermModal(record)">分配权限</a>
+              <a v-permission="'system:role:edit'" @click="openLayerPermModal(record)">分配图层</a>
               <a-popconfirm
                 v-permission="'system:role:delete'"
                 title="确认删除？"
@@ -65,13 +66,29 @@
         :default-expand-all="true"
       />
     </a-modal>
+
+    <!-- 图层权限分配弹窗 -->
+    <a-modal v-model:open="layerPermVisible" title="分配图层权限" @ok="handleLayerPermSubmit" :width="500">
+      <a-spin :spinning="layerLoading">
+        <a-tree
+          v-if="layerTree.length"
+          v-model:checkedKeys="checkedLayerIds"
+          :tree-data="layerTree"
+          checkable
+          :field-names="{ key: 'id', title: 'name', children: 'children' }"
+          :default-expand-all="true"
+        />
+        <div v-else style="text-align: center; color: #999; padding: 20px 0;">暂无图层数据</div>
+      </a-spin>
+    </a-modal>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import { getRoles, createRole, updateRole, deleteRole, assignPermissions } from '@/api/role'
+import { getRoles, createRole, updateRole, deleteRole, assignPermissions, assignLayers, getRoleLayers } from '@/api/role'
+import { getLayers } from '@/api/layer'
 import { getPermissionTree } from '@/api/permission'
 
 const columns = [
@@ -94,6 +111,11 @@ const permVisible = ref(false)
 const permTree = ref<any[]>([])
 const checkedPermIds = ref<number[]>([])
 const currentRoleId = ref<number>(0)
+
+const layerPermVisible = ref(false)
+const layerLoading = ref(false)
+const layerTree = ref<any[]>([])
+const checkedLayerIds = ref<number[]>([])
 
 onMounted(() => loadData())
 
@@ -148,5 +170,68 @@ async function handlePermSubmit() {
   message.success('权限分配成功')
   permVisible.value = false
   loadData()
+}
+
+async function openLayerPermModal(record: any) {
+  currentRoleId.value = record.id
+  layerLoading.value = true
+  layerPermVisible.value = true
+  checkedLayerIds.value = []
+  try {
+    // 1. 获取所有图层并构建前端树结构
+    const resLayers: any = await getLayers({ page: 1, pageSize: 9999 })
+    const allLayers = resLayers.data?.list || []
+    layerTree.value = buildTreeData(allLayers)
+
+    // 2. 获取该角色已经绑定的图层权限列表
+    const resRoleLayers: any = await getRoleLayers(record.id)
+    const roleLayers = resRoleLayers.data || []
+    // 过滤出有 read 权限的图层 ID 作为选中项
+    checkedLayerIds.value = roleLayers.filter((rl: any) => rl.canRead).map((rl: any) => rl.layerId)
+  } catch (e) {
+    message.error('加载图层数据失败')
+  } finally {
+    layerLoading.value = false
+  }
+}
+
+function buildTreeData(list: any[]): any[] {
+  const map = new Map<number, any>()
+  const roots: any[] = []
+
+  list.forEach(item => {
+    map.set(item.id, { ...item, key: item.id, children: [] })
+  })
+
+  list.forEach(item => {
+    const mapped = map.get(item.id)
+    if (item.pid && map.has(item.pid)) {
+      map.get(item.pid).children.push(mapped)
+    } else {
+      roots.push(mapped)
+    }
+  })
+
+  return roots
+}
+
+async function handleLayerPermSubmit() {
+  layerLoading.value = true
+  try {
+    const layersPayload = checkedLayerIds.value.map(id => ({
+      layerId: id,
+      canRead: true,
+      canEdit: true
+    }))
+
+    await assignLayers(currentRoleId.value, layersPayload)
+    message.success('图层权限分配成功')
+    layerPermVisible.value = false
+    loadData()
+  } catch (e) {
+    message.error('保存图层权限失败')
+  } finally {
+    layerLoading.value = false
+  }
 }
 </script>

@@ -23,3 +23,7 @@ export function deleteLayer(id: number) {
 export function exportLayerConfig() {
   return http.get('/map-layers/config/export')
 }
+
+export function getLayerGroups() {
+  return http.get('/map-layers/groups')
+}

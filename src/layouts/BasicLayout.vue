@@ -71,12 +71,34 @@
       </a-layout-content>
     </a-layout>
   </a-layout>
+
+  <a-modal
+    v-model:open="passwordVisible"
+    title="修改密码"
+    :confirm-loading="passwordLoading"
+    @ok="handlePasswordSubmit"
+    @cancel="resetPasswordForm"
+  >
+    <a-form ref="passwordFormRef" :model="passwordForm" :rules="passwordRules" layout="vertical">
+      <a-form-item label="旧密码" name="oldPassword">
+        <a-input-password v-model:value="passwordForm.oldPassword" placeholder="请输入旧密码" />
+      </a-form-item>
+      <a-form-item label="新密码" name="newPassword">
+        <a-input-password v-model:value="passwordForm.newPassword" placeholder="请输入新密码" />
+      </a-form-item>
+      <a-form-item label="确认新密码" name="confirmPassword">
+        <a-input-password v-model:value="passwordForm.confirmPassword" placeholder="请再次输入新密码" />
+      </a-form-item>
+    </a-form>
+  </a-modal>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { reactive, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { Modal, message } from 'ant-design-vue'
+import type { Rule } from 'ant-design-vue/es/form'
+import { changePassword } from '@/api/auth'
 import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
@@ -94,6 +116,37 @@ const menuStore = useMenuStore()
 
 const selectedKeys = ref<string[]>([route.path])
 const openKeys = ref<string[]>([])
+const passwordVisible = ref(false)
+const passwordLoading = ref(false)
+const passwordFormRef = ref()
+const passwordForm = reactive({
+  oldPassword: '',
+  newPassword: '',
+  confirmPassword: '',
+})
+
+const passwordRules: Record<string, Rule[]> = {
+  oldPassword: [
+    { required: true, message: '请输入旧密码', trigger: 'blur' },
+    { min: 6, message: '密码长度不能少于6位', trigger: 'blur' },
+  ],
+  newPassword: [
+    { required: true, message: '请输入新密码', trigger: 'blur' },
+    { min: 6, message: '密码长度不能少于6位', trigger: 'blur' },
+  ],
+  confirmPassword: [
+    { required: true, message: '请再次输入新密码', trigger: 'blur' },
+    {
+      validator: async (_rule, value) => {
+        if (value !== passwordForm.newPassword) {
+          return Promise.reject('两次输入的新密码不一致')
+        }
+        return Promise.resolve()
+      },
+      trigger: 'blur',
+    },
+  ],
+}
 
 watch(
   () => route.path,
@@ -118,8 +171,7 @@ function handleUserMenu({ key }: { key: string }) {
       router.push('/profile')
       break
     case 'password':
-      // TODO: 打开修改密码弹窗
-      message.info('修改密码功能开发中')
+      passwordVisible.value = true
       break
     case 'logout':
       Modal.confirm({
@@ -131,6 +183,38 @@ function handleUserMenu({ key }: { key: string }) {
         },
       })
       break
+  }
+}
+
+function resetPasswordForm() {
+  passwordForm.oldPassword = ''
+  passwordForm.newPassword = ''
+  passwordForm.confirmPassword = ''
+  passwordFormRef.value?.clearValidate?.()
+}
+
+async function handlePasswordSubmit() {
+  try {
+    await passwordFormRef.value?.validate()
+  } catch {
+    return
+  }
+
+  passwordLoading.value = true
+  try {
+    await changePassword({
+      oldPassword: passwordForm.oldPassword,
+      newPassword: passwordForm.newPassword,
+    })
+    message.success('密码修改成功，请重新登录')
+    passwordVisible.value = false
+    resetPasswordForm()
+    await authStore.logout()
+    router.push('/login')
+  } catch (e: any) {
+    message.error(e?.response?.data?.message || e?.message || '密码修改失败')
+  } finally {
+    passwordLoading.value = false
   }
 }
 </script>
