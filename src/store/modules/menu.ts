@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { useAuthStore } from './auth'
 
 export interface MenuItem {
   key: string
@@ -42,7 +43,45 @@ export const useMenuStore = defineStore('menu', () => {
   ]
 
   function initMenus() {
-    menuList.value = defaultMenus
+    const authStore = useAuthStore()
+    const permissions = authStore.permissions || []
+    const roles = authStore.roles || []
+    const isAdmin = roles.some((r: any) => r.code === 'admin')
+
+    if (isAdmin) {
+      menuList.value = defaultMenus
+      return
+    }
+
+    // 页面路径与对应需要的系统权限码映射
+    const permMap: Record<string, string> = {
+      '/system/user': 'system:user',
+      '/system/role': 'system:role',
+      '/system/permission': 'system:permission',
+      '/system/log': 'system:log',
+      '/mapconfig/layers': 'map:layer',
+      '/mapconfig/markers': 'map:marker',
+      '/mapconfig/bookmarks': 'map:bookmark',
+    }
+
+    const filtered = defaultMenus.map((item) => {
+      const menu = { ...item }
+      if (menu.children) {
+        menu.children = menu.children.filter((child) => {
+          const required = permMap[child.path || '']
+          return !required || permissions.includes(required)
+        })
+      }
+      return menu
+    }).filter((menu) => {
+      // 若一级菜单带有子树但其下所有叶子节点均无权访问，则隐藏此大类菜单
+      if (menu.children && menu.children.length === 0) {
+        return false
+      }
+      return true
+    })
+
+    menuList.value = filtered
   }
 
   function toggleCollapsed() {

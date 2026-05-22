@@ -3,6 +3,8 @@ import { message } from 'ant-design-vue'
 import { getToken, removeToken } from '@/utils/auth'
 import router from '@/router'
 
+let isExpiredAlertShown = false
+
 const http = axios.create({
   baseURL: '/api',
   timeout: 30000,
@@ -21,6 +23,10 @@ http.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 http.interceptors.response.use(
   (response: AxiosResponse) => {
     const { data } = response
+    // 如果请求成功（比如进入此分支且 code 为 200），重置 401 弹窗锁状态
+    if (data && (data.code === 200 || data.code === undefined)) {
+      isExpiredAlertShown = false
+    }
     // 后端统一返回 { code, message, data }
     if (data.code !== undefined && data.code !== 200) {
       message.error(data.message || '请求失败')
@@ -34,7 +40,10 @@ http.interceptors.response.use(
       if (status === 401) {
         removeToken()
         router.push('/login')
-        message.error('登录已过期，请重新登录')
+        if (!isExpiredAlertShown) {
+          isExpiredAlertShown = true
+          message.error('登录已过期，请重新登录')
+        }
       } else {
         message.error(data?.message || `请求错误 (${status})`)
       }

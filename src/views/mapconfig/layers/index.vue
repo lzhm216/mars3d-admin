@@ -6,13 +6,9 @@
           <a-space>
             <a-input-search v-model:value="query.keyword" placeholder="搜索图层名称" style="width: 200px" @search="loadData" />
             <a-select v-model:value="query.type" placeholder="类型" allow-clear style="width: 140px" @change="loadData">
-              <a-select-option value="terrain">Terrain</a-select-option>
-              <a-select-option value="wms">WMS</a-select-option>
-              <a-select-option value="geojson">GeoJSON</a-select-option>
-              <a-select-option value="arcgis">ArcGIS</a-select-option>
-              <a-select-option value="tileset">Tileset</a-select-option>
-              <a-select-option value="graphic">Graphic</a-select-option>
-              <a-select-option value="group">Group</a-select-option>
+              <a-select-option v-for="item in LAYER_TYPES" :key="item.value" :value="item.value">
+                {{ item.label }}
+              </a-select-option>
             </a-select>
           </a-space>
         </a-col>
@@ -65,15 +61,9 @@
         </a-form-item>
         <a-form-item label="类型" required>
           <a-select v-model:value="formData.type">
-            <a-select-option value="terrain">Terrain(地形)</a-select-option>
-            <a-select-option value="wms">WMS</a-select-option>
-            <a-select-option value="geojson">GeoJSON</a-select-option>
-            <a-select-option value="arcgis">ArcGIS</a-select-option>
-            <a-select-option value="tileset">Tileset</a-select-option>
-            <a-select-option value="graphic">Graphic</a-select-option>
-            <a-select-option value="wfs">WFS</a-select-option>
-            <a-select-option value="czml">CZML</a-select-option>
-            <a-select-option value="group">Group(组)</a-select-option>
+            <a-select-option v-for="item in LAYER_TYPES" :key="item.value" :value="item.value">
+              {{ item.label }}
+            </a-select-option>
           </a-select>
         </a-form-item>
         <a-form-item label="URL">
@@ -97,17 +87,38 @@
     </a-modal>
 
     <!-- JSON 配置编辑器弹窗 -->
-    <a-modal v-model:open="configVisible" title="图层 JSON 配置" @ok="handleConfigSave" :width="800">
-      <a-textarea v-model:value="configJson" :rows="18" style="font-family: monospace" />
-      <div v-if="configError" style="color: #ff4d4f; margin-top: 8px">{{ configError }}</div>
+    <a-modal v-model:open="configVisible" title="图层 JSON 配置" @ok="handleConfigSave" :width="800" :ok-button-props="{ disabled: !!configError }">
+      <div style="margin-bottom: 8px;">
+        <a-space>
+          <a-button size="small" type="primary" ghost @click="formatJson">格式化 JSON</a-button>
+          <a-button size="small" @click="minifyJson">压缩 JSON</a-button>
+        </a-space>
+      </div>
+      <a-textarea v-model:value="configJson" :rows="18" style="font-family: monospace; background-color: #fafafa;" />
+      <div v-if="configError" style="color: #ff4d4f; margin-top: 8px; white-space: pre-wrap;">{{ configError }}</div>
     </a-modal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import { getLayers, createLayer, updateLayer, deleteLayer, getLayerGroups } from '@/api/layer'
+
+const LAYER_TYPES = [
+  { value: 'terrain', label: 'Terrain (地形)' },
+  { value: 'wms', label: 'WMS' },
+  { value: 'geojson', label: 'GeoJSON' },
+  { value: 'arcgis', label: 'ArcGIS' },
+  { value: 'tileset', label: 'Tileset (3D Tiles)' },
+  { value: 'graphic', label: 'Graphic (标绘)' },
+  { value: 'wfs', label: 'WFS' },
+  { value: 'czml', label: 'CZML' },
+  { value: 'group', label: 'Group (组)' },
+  { value: 'xyz', label: 'XYZ 瓦片' },
+  { value: 'wmts', label: 'WMTS' },
+  { value: 'tdt', label: '天地图' }
+]
 
 const columns = [
   { title: 'ID', dataIndex: 'id', key: 'id', width: 60 },
@@ -211,6 +222,39 @@ function openConfigEditor(record: any) {
   configJson.value = JSON.stringify(record.config || {}, null, 2)
   configError.value = ''
   configVisible.value = true
+}
+
+watch(configJson, (val) => {
+  if (!val.trim()) {
+    configError.value = ''
+    return
+  }
+  try {
+    JSON.parse(val)
+    configError.value = ''
+  } catch (e: any) {
+    configError.value = 'JSON 格式错误: ' + e.message
+  }
+})
+
+function formatJson() {
+  try {
+    const parsed = JSON.parse(configJson.value)
+    configJson.value = JSON.stringify(parsed, null, 2)
+    configError.value = ''
+  } catch (e: any) {
+    configError.value = '格式化失败: ' + e.message
+  }
+}
+
+function minifyJson() {
+  try {
+    const parsed = JSON.parse(configJson.value)
+    configJson.value = JSON.stringify(parsed)
+    configError.value = ''
+  } catch (e: any) {
+    configError.value = '压缩失败: ' + e.message
+  }
 }
 
 async function handleConfigSave() {
